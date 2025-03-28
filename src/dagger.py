@@ -1,10 +1,57 @@
 from tqdm import tqdm
+from gymnasium.spaces import Box
 from onnx2pytorch import ConvertModel
 from torch.utils.data import DataLoader
-from env_utils import Agent, make_env
 from dataset import DemonstrationDataset
 from policy_network import PolicyNetwork
-import os, time, onnx, torch, shutil, numpy as np, torch.nn as nn, torch.optim as optim
+from torch.distributions import Categorical
+from gymnasium.wrappers import FrameStack, RecordEpisodeStatistics, ResizeObservation, GrayScaleObservation
+import os, time, onnx, torch, shutil, numpy as np, torch.nn as nn, torch.optim as optim, gymnasium as gym
+
+class Agent:
+    def __init__(self, model, device):
+        self.model = model
+        self.device = device
+
+    def select_action(self, state):
+        with torch.no_grad():
+            state_t = torch.tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0) / 255.0
+            logits = self.model(state_t)
+            action = Categorical(logits=logits.float()).sample().item()
+        return action
+
+class CropObservation(gym.ObservationWrapper):
+    def __init__(self, env, shape):
+        super().__init__(env)
+        self.shape = shape
+        obs_shape = self.shape + env.observation_space.shape[2:]
+        self.observation_space = Box(low=0, high=255, shape=obs_shape, dtype=np.uint8)
+
+    def observation(self, obs):
+        return obs[: self.shape[0], : self.shape[1]]
+
+class RecordState(gym.Wrapper):
+    def __init__(self, env: gym.Env, reset_clean: bool = True):
+        super().__init__(env)
+        self.frame_list = []
+        self.reset_clean = reset_clean
+
+    def step(self, action):
+        obs, rew, term, trunc, info = self.env.step(action)
+        self.frame_list.append(obs)
+        return obs, rew, term, trunc, info
+
+    def reset(self, *args, **kwargs):
+        obs, info = self.env.reset(*args, **kwargs)
+        if self.reset_clean:
+            self.frame_list = []
+        self.frame_list.append(obs)
+        return obs, info
+
+    def render(self):
+        frames = self.frame_list
+        self.frame_list = []
+        return frames
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -36,7 +83,16 @@ if __name__ == "__main__":
     best_model_state = None
     for i in tqdm(range(n_dagger_iters), desc="DAgger Iterations", leave=False, dynamic_ncols=True):
         iter_start = time.time()
-        env = make_env(seed=123 + i)
+        env = gym.make("CarRacing-v2", render_mode="rgb_array", continuous=False)
+        env = RecordEpisodeStatistics(env)
+        env = CropObservation(env, (84, 96))
+        env = ResizeObservation(env, (84, 84))
+        env = GrayScaleObservation(env)
+        env = RecordState(env, reset_clean=True)
+        env = FrameStack(env, 4)
+        env.reset(seed=123)
+        env.action_space.seed(123)
+        env.observation_space.seed(123)
         beta = 1.0 - (i / (n_dagger_iters - 1)) * 0.5
         episode_rewards = []
         for ep in tqdm(range(dagger_episodes_per_iter), desc=f"Iter {i+1} Episodes", leave=False, dynamic_ncols=True):
