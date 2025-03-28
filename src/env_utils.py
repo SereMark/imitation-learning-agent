@@ -1,6 +1,6 @@
 from gymnasium.spaces import Box
 from torch.distributions import Categorical
-from gymnasium.wrappers import RecordEpisodeStatistics, RecordVideo, ResizeObservation, GrayScaleObservation, FrameStack
+from gymnasium.wrappers import RecordEpisodeStatistics, ResizeObservation, GrayScaleObservation, FrameStack
 import torch, numpy as np, gymnasium as gym
 
 class Agent:
@@ -12,7 +12,7 @@ class Agent:
         with torch.no_grad():
             state_t = torch.tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0) / 255.0
             logits = self.model(state_t)
-            action = Categorical(logits=logits).sample().item()
+            action = Categorical(logits=logits.float()).sample().item()
         return action
 
 class CropObservation(gym.ObservationWrapper):
@@ -48,11 +48,9 @@ class RecordState(gym.Wrapper):
         self.frame_list = []
         return frames
 
-def make_env(seed=None, capture_video=True, video_dir="media"):
+def make_env(seed=None):
     env = gym.make("CarRacing-v2", render_mode="rgb_array", continuous=False)
     env = RecordEpisodeStatistics(env)
-    if capture_video:
-        env = RecordVideo(env, video_dir)
     env = CropObservation(env, (84, 96))
     env = ResizeObservation(env, (84, 84))
     env = GrayScaleObservation(env)
