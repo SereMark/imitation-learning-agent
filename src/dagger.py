@@ -4,7 +4,6 @@ import onnx
 import torch
 import shutil
 import numpy as np
-import torch.nn as nn
 import gymnasium as gym
 import torch.optim as optim
 from tqdm import tqdm
@@ -14,32 +13,37 @@ from torch.utils.data import DataLoader
 from dataset import DemonstrationDataset
 from policy_network import PolicyNetwork
 from torch.distributions import Categorical
-from gymnasium.wrappers import FrameStack, RecordEpisodeStatistics, ResizeObservation, GrayScaleObservation
-
-class Agent:
-    def __init__(self, model, device):
-        self.model = model
-        self.device = device
-
-    def select_action(self, state):
-        with torch.no_grad():
-            state_t = torch.tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0) / 255.0
-            logits = self.model(state_t)
-            return Categorical(logits=logits.float()).sample().item()
+from gymnasium.wrappers import RecordEpisodeStatistics, ResizeObservation, GrayScaleObservation, FrameStack
 
 class CropObservation(gym.ObservationWrapper):
     def __init__(self, env, shape):
         super().__init__(env)
         self.shape = shape
-        self.observation_space = Box(
-            low=0,
-            high=255,
-            shape=self.shape + env.observation_space.shape[2:],
-            dtype=np.uint8
-        )
+        obs_shape = self.shape + env.observation_space.shape[2:]
+        self.observation_space = Box(low=0, high=255, shape=obs_shape, dtype=np.uint8)
 
-    def observation(self, obs):
-        return obs[:self.shape[0], :self.shape[1]]
+    def observation(self, observation):
+        return observation[:self.shape[0], :self.shape[1]]
+
+class Agent():
+    def __init__(self, model, device):
+        self.model = model
+        self.device = device
+
+    def select_action(self, state, expert=False):
+        with torch.no_grad():
+            state = np.array(state)
+            if expert:
+                state_tensor = torch.Tensor(state).unsqueeze(0).to(self.device) / 255.0
+            else:
+                if state.ndim == 3:
+                    state = state[-1]
+                state_tensor = torch.Tensor(state).unsqueeze(0).unsqueeze(0).to(self.device) / 255.0
+            logits = self.model(state_tensor)
+            if isinstance(logits, tuple):
+                logits = logits[0]
+            probs = Categorical(logits=logits)
+            return probs.sample().cpu().numpy()[0]
 
 class RecordState(gym.Wrapper):
     def __init__(self, env, reset_clean=True):
@@ -81,17 +85,17 @@ if __name__ == "__main__":
     expert_agent = Agent(expert_model, device)
 
     bc_state_dict = torch.load("models/bc_model.pth", map_location=device)
-    model = PolicyNetwork(num_actions=5, in_channels=4).to(device)
+    model = PolicyNetwork(num_actions=5, in_channels=1).to(device)
     model.load_state_dict(bc_state_dict)
     train_agent = Agent(model, device)
 
-    dagger_dataset = DemonstrationDataset(dagger_folder, augment=True, stack_frames=4)
+    dagger_dataset = DemonstrationDataset(dagger_folder, augment=True)
     optimizer = optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-5)
-    criterion = nn.CrossEntropyLoss()
+    criterion = torch.nn.CrossEntropyLoss()
     scaler = torch.cuda.amp.GradScaler() if device.type == "cuda" else None
 
-    n_dagger_iters = 15
-    dagger_episodes_per_iter = 10
+    n_dagger_iters = 20
+    dagger_episodes_per_iter = 20
     training_epochs_per_iter = 20
     best_avg_reward = -float("inf")
     best_model_state = None
@@ -106,9 +110,6 @@ if __name__ == "__main__":
         env = GrayScaleObservation(env)
         env = RecordState(env, reset_clean=True)
         env = FrameStack(env, 4)
-        env.reset(seed=123)
-        env.action_space.seed(123)
-        env.observation_space.seed(123)
         beta = np.exp((np.log(final_beta) / (n_dagger_iters - 1)) * i)
         episode_rewards = []
 
@@ -119,17 +120,14 @@ if __name__ == "__main__":
             step_count = 0
 
             while not done:
-                full_obs = np.array(obs)
-                student_input = full_obs
-                expert_input = full_obs
-                action = expert_agent.select_action(expert_input) if np.random.rand() < beta else train_agent.select_action(student_input)
-                expert_action_val = expert_agent.select_action(expert_input)
-                expert_action_np = np.array(expert_action_val)
+                expert_action = expert_agent.select_action(obs, expert=True)
+                train_action = train_agent.select_action(obs, expert=False)
+                action = expert_action if np.random.rand() < beta else train_action
                 obs, reward, terminated, truncated, _ = env.step(action)
                 done = terminated or truncated
                 ep_reward += reward
                 step_count += 1
-                dagger_dataset.append([full_obs], [expert_action_np])
+                dagger_dataset.append([np.expand_dims(obs[-1], 0)], [expert_action])
             episode_rewards.append(ep_reward)
             tqdm.write(f"Iter {i+1} Ep {ep+1}: Steps={step_count}, Reward={ep_reward:.2f}")
 
@@ -174,6 +172,6 @@ if __name__ == "__main__":
         model.load_state_dict(best_model_state)
 
     os.makedirs("models", exist_ok=True)
-    sample_state = torch.rand(1, 4, 84, 84, device=device)
+    sample_state = torch.rand(1, 1, 84, 84, device=device)
     torch.onnx.export(model, sample_state, "models/dagger_model.onnx", export_params=True, opset_version=17, do_constant_folding=True)
     torch.save(model.state_dict(), os.path.join("models", "dagger_model.pth"))

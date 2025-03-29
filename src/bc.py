@@ -1,7 +1,6 @@
 import os
 import time
 import torch
-import torch.nn as nn
 import torch.optim as optim
 from tqdm import tqdm
 from torch.utils.data import DataLoader
@@ -12,15 +11,16 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 if __name__ == "__main__":
-    n_epochs = 30
-    train_set = DemonstrationDataset("data/train", augment=True, stack_frames=4)
-    val_set = DemonstrationDataset("data/val", augment=False, stack_frames=4)
+    n_epochs = 100  
+    train_set = DemonstrationDataset("data/train", augment=True)
+    val_set = DemonstrationDataset("data/val", augment=False)
     train_loader = DataLoader(train_set, batch_size=64, shuffle=True, pin_memory=True, num_workers=4)
     val_loader = DataLoader(val_set, batch_size=64, shuffle=False, pin_memory=True, num_workers=4)
-    model = PolicyNetwork(num_actions=5, in_channels=4).to(device)
-    optimizer = optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-5)
+    
+    model = PolicyNetwork(num_actions=5, in_channels=1).to(device)
+    optimizer = optim.AdamW(model.parameters(), lr=3e-4, weight_decay=1e-5)
     scheduler = CosineAnnealingLR(optimizer, T_max=n_epochs)
-    criterion = nn.CrossEntropyLoss()
+    criterion = torch.nn.CrossEntropyLoss()
     scaler = torch.cuda.amp.GradScaler() if device.type == "cuda" else None
 
     for epoch in range(n_epochs):
@@ -92,6 +92,6 @@ if __name__ == "__main__":
         tqdm.write(f"\nEpoch {epoch+1}/{n_epochs} Summary: Time: {epoch_time:.1f}s | Train Loss: {avg_train_loss:.3f} (Entropy: {avg_train_entropy:.3f}) | Val Loss: {avg_val_loss:.3f} (Acc: {val_acc:.3f})\n")
 
     os.makedirs("models", exist_ok=True)
-    sample_state = torch.rand(1, 4, 84, 84, device=device)
+    sample_state = torch.rand(1, 1, 84, 84, device=device)
     torch.onnx.export(model, sample_state, "models/bc_model.onnx", export_params=True, opset_version=17, do_constant_folding=True)
     torch.save(model.state_dict(), os.path.join("models", "bc_model.pth"))

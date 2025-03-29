@@ -4,15 +4,11 @@ import numpy as np
 from glob import glob
 
 class DemonstrationDataset(torch.utils.data.Dataset):
-    def __init__(self, data_dir, augment=False, stack_frames=4):
+    def __init__(self, data_dir, augment=False):
         self.data_dir = data_dir
         self.files = sorted(glob(os.path.join(data_dir, "*.npz")))
         self.augment = augment
-        self.stack_frames = stack_frames
-        self.counter = max(
-            (int(os.path.splitext(os.path.basename(f))[0]) for f in self.files),
-            default=0
-        )
+        self.counter = max((int(os.path.splitext(os.path.basename(f))[0]) for f in self.files), default=0)
 
     def __len__(self):
         return len(self.files)
@@ -23,8 +19,6 @@ class DemonstrationDataset(torch.utils.data.Dataset):
             state = data["state"].astype(np.float32) / 255.0
             if state.ndim == 2:
                 state = state[np.newaxis, ...]
-            if state.shape[0] == 1:
-                state = np.repeat(state, self.stack_frames, axis=0)
             if self.augment:
                 state = self._augment(state)
             action = data["action"]
