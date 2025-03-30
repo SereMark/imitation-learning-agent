@@ -48,7 +48,7 @@ class PolicyNetwork(nn.Module):
             nn.Flatten(),
             nn.Linear(256, 512),
             nn.ReLU(inplace=True),
-            nn.Dropout(0.25),
+            nn.Dropout(0.5),
             nn.Linear(512, num_actions)
         )
 

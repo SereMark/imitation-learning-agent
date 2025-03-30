@@ -13,6 +13,7 @@ from torch.utils.data import DataLoader
 from dataset import DemonstrationDataset
 from policy_network import PolicyNetwork
 from torch.distributions import Categorical
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from gymnasium.wrappers import RecordEpisodeStatistics, ResizeObservation, GrayScaleObservation, FrameStack
 
 class CropObservation(gym.ObservationWrapper):
@@ -91,7 +92,7 @@ if __name__ == "__main__":
 
     dagger_dataset = DemonstrationDataset(dagger_folder, augment=True)
     optimizer = optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-5)
-    criterion = torch.nn.CrossEntropyLoss()
+    criterion = torch.nn.CrossEntropyLoss(label_smoothing=0.1)
     scaler = torch.cuda.amp.GradScaler() if device.type == "cuda" else None
 
     n_dagger_iters = 20
@@ -133,6 +134,7 @@ if __name__ == "__main__":
 
         avg_episode_reward = np.mean(episode_rewards)
         dagger_loader = DataLoader(dagger_dataset, batch_size=64, shuffle=True, num_workers=4)
+        dagger_scheduler = CosineAnnealingLR(optimizer, T_max=training_epochs_per_iter)
         total_epoch_loss = 0.0
 
         for epoch in range(training_epochs_per_iter):
@@ -155,6 +157,7 @@ if __name__ == "__main__":
                     torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                     optimizer.step()
                 epoch_loss_sum += loss.item() * states.size(0)
+            dagger_scheduler.step()
             avg_epoch_loss = epoch_loss_sum / len(dagger_loader.dataset)
             tqdm.write(f"DAgger Iter {i+1} Training Epoch {epoch+1}: Loss = {avg_epoch_loss:.3f}")
             total_epoch_loss += epoch_loss_sum
