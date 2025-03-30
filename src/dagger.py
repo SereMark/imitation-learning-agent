@@ -95,12 +95,12 @@ if __name__ == "__main__":
     criterion = torch.nn.CrossEntropyLoss()
     scaler = torch.cuda.amp.GradScaler() if device.type == "cuda" else None
 
-    n_dagger_iters = 20
-    dagger_episodes_per_iter = 20
-    training_epochs_per_iter = 10
+    n_dagger_iters = 10
+    dagger_episodes_per_iter = 10
+    training_epochs_per_iter = 5
     best_avg_reward = -float("inf")
     best_model_state = None
-    final_beta = 0.1
+    final_beta = 0.5
 
     for i in tqdm(range(n_dagger_iters), desc="DAgger Iterations", leave=False, dynamic_ncols=True):
         iter_start = time.time()
@@ -111,7 +111,7 @@ if __name__ == "__main__":
         env = GrayScaleObservation(env)
         env = RecordState(env, reset_clean=True)
         env = FrameStack(env, 4)
-        beta = np.exp((np.log(final_beta) / (n_dagger_iters - 1)) * i)
+        beta = np.interp(i, [0, n_dagger_iters - 1], [1.0, final_beta])
         episode_rewards = []
 
         for ep in tqdm(range(dagger_episodes_per_iter), desc=f"Iter {i+1} Episodes", leave=False, dynamic_ncols=True):

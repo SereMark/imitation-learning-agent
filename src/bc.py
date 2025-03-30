@@ -11,7 +11,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 if __name__ == "__main__":
-    n_epochs = 30
+    n_epochs = 50
     train_set = DemonstrationDataset("data/train", augment=True)
     val_set = DemonstrationDataset("data/val", augment=False)
     train_loader = DataLoader(train_set, batch_size=64, shuffle=True, pin_memory=True, num_workers=4)
