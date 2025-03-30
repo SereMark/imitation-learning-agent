@@ -97,7 +97,7 @@ if __name__ == "__main__":
 
     n_dagger_iters = 20
     dagger_episodes_per_iter = 20
-    training_epochs_per_iter = 20
+    training_epochs_per_iter = 10
     best_avg_reward = -float("inf")
     best_model_state = None
     final_beta = 0.1
