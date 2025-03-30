@@ -11,7 +11,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 if __name__ == "__main__":
-    n_epochs = 50  
+    n_epochs = 30
     train_set = DemonstrationDataset("data/train", augment=True)
     val_set = DemonstrationDataset("data/val", augment=False)
     train_loader = DataLoader(train_set, batch_size=64, shuffle=True, pin_memory=True, num_workers=4)
@@ -20,7 +20,7 @@ if __name__ == "__main__":
     model = PolicyNetwork(num_actions=5, in_channels=1).to(device)
     optimizer = optim.AdamW(model.parameters(), lr=3e-4, weight_decay=1e-5)
     scheduler = CosineAnnealingLR(optimizer, T_max=n_epochs)
-    criterion = torch.nn.CrossEntropyLoss(label_smoothing=0.1)
+    criterion = torch.nn.CrossEntropyLoss()
     scaler = torch.cuda.amp.GradScaler() if device.type == "cuda" else None
 
     for epoch in range(n_epochs):

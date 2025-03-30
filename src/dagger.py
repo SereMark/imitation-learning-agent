@@ -92,7 +92,7 @@ if __name__ == "__main__":
 
     dagger_dataset = DemonstrationDataset(dagger_folder, augment=True)
     optimizer = optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-5)
-    criterion = torch.nn.CrossEntropyLoss(label_smoothing=0.1)
+    criterion = torch.nn.CrossEntropyLoss()
     scaler = torch.cuda.amp.GradScaler() if device.type == "cuda" else None
 
     n_dagger_iters = 20
