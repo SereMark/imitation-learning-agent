@@ -23,11 +23,6 @@ if __name__ == "__main__":
     criterion = torch.nn.CrossEntropyLoss(label_smoothing=0.1)
     scaler = torch.cuda.amp.GradScaler() if device.type == "cuda" else None
 
-    best_val_loss = float("inf")
-    best_model_state = None
-    early_stop_counter = 0
-    early_stop_patience = 10
-
     for epoch in range(n_epochs):
         epoch_start = time.time()
         model.train()
@@ -95,16 +90,6 @@ if __name__ == "__main__":
         val_acc = correct / total
         epoch_time = time.time() - epoch_start
         tqdm.write(f"\nEpoch {epoch+1}/{n_epochs} Summary: Time: {epoch_time:.1f}s | Train Loss: {avg_train_loss:.3f} (Entropy: {avg_train_entropy:.3f}) | Val Loss: {avg_val_loss:.3f} (Acc: {val_acc:.3f})\n")
-
-        if avg_val_loss < best_val_loss:
-            best_val_loss = avg_val_loss
-            best_model_state = model.state_dict().copy()
-            early_stop_counter = 0
-        else:
-            early_stop_counter += 1
-            if early_stop_counter >= early_stop_patience:
-                tqdm.write(f"Early stopping at epoch {epoch+1}")
-                break
 
     os.makedirs("models", exist_ok=True)
     sample_state = torch.rand(1, 1, 84, 84, device=device)
