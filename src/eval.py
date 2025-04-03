@@ -55,4 +55,5 @@ if __name__ == "__main__":
             done = terminated or truncated
         env.close()
         scores.append(score)
-    print(np.mean(scores))
+        print(f"Episode {len(scores)}: Score = {score}")
+    print(f"Average Score: {np.mean(scores):.2f} +/- {np.std(scores):.2f}")
